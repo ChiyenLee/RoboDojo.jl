@@ -3,7 +3,7 @@
 # PKG_SETUP
 
 # ## Setup
-
+using Revise
 using RoboDojo 
 
 # ## Initial conditions

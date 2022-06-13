@@ -186,7 +186,9 @@ function gradient!(grad::GradientTrajectory{T}, h::T, δz::Matrix{T}, idx_z::Ind
     ∂b1∂q1 = @views δz[idx_z.b, idx_θ.q1]
     ∂b1∂q2 = @views δz[idx_z.b, idx_θ.q2]
     ∂b1∂u1 = @views δz[idx_z.b, idx_θ.u]
+    ∂q3∂w1 = @views δz[idx_z.q, idx_θ.w]
 
+    grad.∂q3∂w1[t] .= ∂q3∂w1
     grad.∂q3∂q1[t] .= ∂q3∂q1
     grad.∂q3∂q2[t] .= ∂q3∂q2
     grad.∂q3∂u1[t] .= ∂q3∂u1
@@ -227,6 +229,11 @@ function set_state!(s::Simulator{T}, q::AbstractArray, v::AbstractArray, t::Int)
 
     return nothing
 end
+
+function set_param!(s::Simulator{T}, w::AbstractArray, t::Int) where T 
+    s.traj.w[t] .= w
+    return nothing 
+end 
 
 function simulate!(s::Simulator{T}, q::AbstractVector{T}, v::AbstractVector{T};
         reset_traj=false, verbose=false) where T

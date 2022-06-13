@@ -9,7 +9,7 @@ robots = [hopper, hopper1, biped, quadruped, quadruped4, quadruped_spring, halfq
 
 for robot in robots
     path = joinpath(path_robots, String(name(robot)) * ".jld2")
-
+    
     if !isfile(path)
         # kinematics
         contact_kinematics = eval(Symbol(String(name(robot)) * "_contact_kinematics"))
