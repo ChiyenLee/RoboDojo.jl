@@ -26,6 +26,7 @@
 # ## Setup
 using Revise
 using RoboDojo
+using JLD2
 
 # ## Initial conditions
 # q1 = nominal_configuration(centroidal_quadruped_param) 
@@ -47,24 +48,95 @@ RESIDUAL_EXPR[String(name(centroidal_quadruped_param)) * "_rθ"] = eval(rθ_mode
 residual_expr(centroidal_quadruped_param)
 jacobian_var_expr(centroidal_quadruped_param)
 jacobian_data_expr(centroidal_quadruped_param)
-sim = Simulator(centroidal_quadruped_param, 100; diff_sol=true)
+sim = Simulator(centroidal_quadruped_param, 50; diff_sol=true, h=0.01)
 
 q1 = nominal_configuration(centroidal_quadruped) 
 v1 = zeros(centroidal_quadruped.nq)
 reset!(sim.traj)
 reset!(sim.grad)
-set_state!(sim, q1, v1, 1)
-set_param!(sim, [centroidal_quadruped.mass_body,
+set_state!(sim, q1, v1, 3)
+[set_param!(sim, [centroidal_quadruped.mass_body*1,
                  centroidal_quadruped.inertia_body[1,1], 
                  centroidal_quadruped.inertia_body[2,2],
-                 centroidal_quadruped.inertia_body[3,3]], 1)
+                 centroidal_quadruped.inertia_body[3,3]], t) for t in 1:50]
 step!(sim, q1, v1, ones(12), 1)
-
+# simulate!(sim, q1, v1)
 
 ## Setting up control (IterativeLQR)
+import IterativeLQR as iLQR
+
+dyn = iLQR.Dynamics(
+    (y, x, u, w) -> dynamics(sim, y, x, u, w),
+    (dx, x, u, w) -> dynamics_jacobian_state(sim, dx, x, u, w),
+    (du, x, u, w) -> dynamics_jacobian_input(sim, du,  x, u, w),
+    centroidal_quadruped_param.nq * 2, centroidal_quadruped_param.nq * 2, centroidal_quadruped_param.nu, 4)
+
+# Load Walking reference 
+@load joinpath(@__DIR__, "inplace_trot_v7.jld2") qm um γm bm ψm ηm μm hm
+# @load joinpath(@__DIR__, "stand_10Hz.jld2") qm um γm bm ψm ηm μm hm
+T = 30
+vm = diff(qm) / hm
+pushfirst!(vm, zeros(size(qm[1])))
+x_ref = [[qm[i]..., vm[i]...] for i in 1:T]
+
+## Objective
+Qt = Diagonal([ [10, 10, 10]; 
+                [80, 60, 20];
+                fill([1,1,10], 4)...;
+                [1,  1,  100];
+                [8,  6,  2];
+               fill([1e-1, 1e-1, 1e-1], 4)...])
+Rt = Diagonal(ones(12)) * 1e-5
 
 
-# s = LciMPC.get_simulation("centroidal_quadruped", "flat_3D_lc", "flat")
+ots = [(x, u, w) -> transpose(x - x_ref[t]) * Qt * (x - x_ref[t]) + 
+                    transpose(u) * Rt * u for t = 1:T]
+
+n = centroidal_quadruped_param.nq * 2 
+m = centroidal_quadruped_param.nu
+cts = [iLQR.Cost(ot, n, m) for ot in ots]
+obj = cts
+
+options = iLQR.Options(line_search=:armijo,
+        max_iterations=200,
+        max_dual_updates=30,
+        # min_step_size=1e-5,
+        objective_tolerance=1e-3,
+        lagrangian_gradient_tolerance=1e-3,
+        constraint_tolerance=1e-4,
+        initial_constraint_penalty=1e-3,
+        scaling_penalty=3.0,
+        max_penalty=1e4,
+        verbose=true)
+
+dynamics_model = [dyn for t = 1:T-1]
+s = iLQR.Solver(dynamics_model, obj, parameters=[[13.1, 0.2, 0.3, 0.3] for t=1:T], options=options)
+
+## Dynamics Rollout
+sim = Simulator(centroidal_quadruped_param, 1; diff_sol=true, h=0.01)
+x1 = deepcopy(x_ref[1])
+x1[10] += 0.05
+x1[11] += 0.05
+
+# x1[3] -= 0.1
+u_init = [um[t] ./ hm for t = 1:T-2]
+pushfirst!(u_init, zeros(12))
+x1_rollout = iLQR.rollout(dynamics_model, x1, u_init, [[15.0,  1, 2, 2.5] for t=1:T])
+iLQR.initialize_controls!(s,u_init)
+iLQR.initialize_states!(s, x1_rollout)
+iLQR.ilqr_solve!(s)
+
+x_sol, u_sol = iLQR.get_trajectory(s)
+
+# Visualization 
+vis = Visualizer()
+open(vis)
+visualize!(vis, centroidal_quadruped_param, x1_rollout; Δt=hm)
 
 
-## EKF Example
+sim = Simulator(centroidal_quadruped_param, 1; diff_sol=true, h=0.01)
+Q = Diagonal(ones(36)*1e2)
+Q[7:18, 7:18] .= 0
+Q[25:end, 25:end] .= 0
+w̄ = [16.0,  1.9, 2.8, 2.0]
+

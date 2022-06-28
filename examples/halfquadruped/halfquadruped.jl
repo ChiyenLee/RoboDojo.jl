@@ -26,3 +26,5 @@ render(vis)
 
 # ## Visualize
 visualize!(vis, s)
+visualize!(vis, s, 
+    fixed_camera=false)

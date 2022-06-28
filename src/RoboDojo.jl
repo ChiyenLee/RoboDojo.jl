@@ -76,6 +76,10 @@ include(joinpath("../src/robots/centroidal_quadruped/model.jl"))
 include(joinpath("../src/robots/centroidal_quadruped/simulator.jl"))
 include(joinpath("../src/robots/centroidal_quadruped/visuals.jl"))
 
+include(joinpath("../src/robots/centroidal_quadruped_param/model.jl"))
+include(joinpath("../src/robots/centroidal_quadruped_param/simulator.jl"))
+include(joinpath("../src/robots/centroidal_quadruped_param/visuals.jl"))
+
 include(joinpath("../src/robots/point_foot_quadruped/model.jl"))
 include(joinpath("../src/robots/point_foot_quadruped/simulator.jl"))
 include(joinpath("../src/robots/point_foot_quadruped/visuals.jl"))

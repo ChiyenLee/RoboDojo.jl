@@ -160,6 +160,24 @@ function friction_coefficients(model::CentroidalQuadrupedParam)
     return [model.friction_foot_world; model.friction_body_world]
 end
 
+function dynamics(model::CentroidalQuadrupedParam, mass_matrix, dynamics_bias, h, q0, q1, u1, w1, λ1, q2)
+    # evalutate at midpoint
+    qm1 = 0.5 * (q0 + q1)
+    vm1 = (q1 - q0) / h[1]
+    qm2 = 0.5 * (q1 + q2)
+    vm2 = (q2 - q1) / h[1]
+
+    D1L1, D2L1 = lagrangian_derivatives(mass_matrix, dynamics_bias, qm1, vm1)
+    D1L2, D2L2 = lagrangian_derivatives(mass_matrix, dynamics_bias, qm2, vm2)
+
+    d = 0.5 * h[1] * D1L1 + D2L1 + 0.5 * h[1] * D1L2 - D2L2 # variational integrator (midpoint)
+    d .+= transpose(input_jacobian(model, qm2)) * u1             # control inputs
+    d .+= λ1                                                # contact impulses
+    d .-= model.friction_joint .* vm2 .* h[1] # joint friction
+
+    return d
+end
+
 # dimensions
 nq = 3 + 3 + 3 * 4       # generalized coordinates
 nu = 3 * 4               # controls
@@ -170,18 +188,20 @@ nc = 5                   # contact points
 gravity = [0.0; 0.0; 9.81]                 # gravity
 friction_body_world = [0.5]                # coefficient of friction
 friction_foot_world = [0.5; 0.5; 0.5; 0.5] # coefficient of friction
+friction_joint = [10ones(3); 30ones(3); 10ones(12)]
+
 
 # inertial properties
 @variables mass_body
 @variables centroidal_inertia[1:3]
 inertia_body = Array(Diagonal(centroidal_inertia))
-mass_foot = 0.1
+mass_foot = 0.2
 
 centroidal_quadruped_param = CentroidalQuadrupedParam(nq, nu, nw, nc,
 				mass_body,
                 inertia_body, 
                 mass_foot,
-                zeros(nq - 6),
+                friction_joint,
                 friction_body_world, 
                 friction_foot_world, 
                 gravity)
