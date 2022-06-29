@@ -39,24 +39,31 @@ visualize!(vis, centroidal_quadruped_param, q_traj; Δt=h_sim)
 # ## 
 # Running state param estimation
 sim = Simulator(centroidal_quadruped_param, 1; diff_sol=true, h=h_sim)
-Q = Diagonal(ones(36)*1e2)
+Q = Diagonal(ones(36)*2e-5)
 Q[7:18, 7:18] .= 0
-# Q[25:end, 25:end] .= 0
 R = Diagonal(ones(12))
-w_init = [mass_body-5.0,  inertia_body[1,1], inertia_body[2,2], inertia_body[3,3]]
-w_gt = [mass_body,  inertia_body[1,1], inertia_body[2,2], inertia_body[3,3]]
+w_init = [mass_body+5.0,  -0.2, 0.15, 0.01]
+w_gt = [mass_body,  0.0, 0.0, 0.0]
 w = copy(w_init)
 
-T = 350
-w_hist = zeros(size(w,1), T)
-horizon = 5
-for i in 1:T 
-    w = est_param(sim, x_traj[i:i+horizon], u_traj[i:i+horizon]./h_sim, w, Q, R; iterations = 3, α=0.1)
-    w_hist[:,i] = w
+T = 200
+w_hist = zeros(size(w,1), T-horizon)
+horizon = 20
+for i in horizon+1:T 
+    w = est_param(sim, x_traj[i-horizon:i], u_traj[i-horizon:i]./h_sim, w, Q, R; iterations = 1, α=0.01)
+    w_hist[:,i-horizon] = w
     println(w)
 end 
 
 w_error = w_hist .- w_gt
-p = plot(collect(1:T) .* h_sim, w_error', labels=["mass" "Ixx" "Iyy" "Izz"])
+p = plot(collect(horizon+1:T) .* h_sim, w_error', labels=["mass" "offset_x" "offset_y" "offset_z"])
 title!(p, "parameter estimation error")
 xlabel!(p, "time (s)")
+
+
+
+dynamics(sim, x_traj[4], u_traj[4]./h_sim, w, diff_sol=true, verbose=true)
+
+cost, grad_now = cost_param(sim, x_traj[1:50], u_traj[1:50]./h_sim, w_gt, Q)
+
+inv(grad_now' * grad_now + I(4) * 1e-5) * grad_now'* grad_now

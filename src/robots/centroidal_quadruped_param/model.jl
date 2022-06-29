@@ -17,8 +17,9 @@ mutable struct CentroidalQuadrupedParam{T} <: Model{T}
 
     # parameters
     mass_body::Symbolics.Num
-    inertia_body::Matrix{Symbolics.Num} 
+    inertia_body::Matrix{T} 
     mass_foot::T 
+    com_offset::Vector{Symbolics.Num}
 
     # environment 
     friction_joint::Vector{T}
@@ -89,9 +90,9 @@ end
 
 function parameter_update!(model::CentroidalQuadrupedParam, w) 
     model.mass_body = w[1]
-    model.inertia_body[1,1] = w[2]
-    model.inertia_body[2,2] = w[3]
-    model.inertia_body[3,3] = w[4]
+    model.com_offset[1] = w[2]
+    model.com_offset[2] = w[3]
+    model.com_offset[3] = w[4]
 end 
 
 function signed_distance(model::CentroidalQuadrupedParam, q)
@@ -112,12 +113,13 @@ function input_jacobian(model::CentroidalQuadrupedParam, q)
     orientation_body = q[3 .+ (1:3)]
     # R = mrp_rotation_matrix(orientation_body)
     R = euler_rotation_matrix(orientation_body)
-    
+    com_off = R * model.com_offset 
+
     # kinematics in world frame
-	r1 = q[6 .+ (1:3)] - position_body
-	r2 = q[9 .+ (1:3)] - position_body
-	r3 = q[12 .+ (1:3)] - position_body
-	r4 = q[15 .+ (1:3)] - position_body
+	r1 = q[6 .+ (1:3)] - (position_body + com_off)
+	r2 = q[9 .+ (1:3)] - (position_body + com_off)
+	r3 = q[12 .+ (1:3)] - (position_body + com_off)
+	r4 = q[15 .+ (1:3)] - (position_body + com_off) 
 
 	z3 = zeros(3, 3)
 
@@ -193,14 +195,15 @@ friction_joint = [10ones(3); 30ones(3); 10ones(12)]
 
 # inertial properties
 @variables mass_body
-@variables centroidal_inertia[1:3]
-inertia_body = Array(Diagonal(centroidal_inertia))
+@variables com_offset[1:3]
+inertia_body = Array(Diagonal([0.178533, 0.3778, 0.4565]))
 mass_foot = 0.2
 
 centroidal_quadruped_param = CentroidalQuadrupedParam(nq, nu, nw, nc,
 				mass_body,
                 inertia_body, 
                 mass_foot,
+                com_offset, 
                 friction_joint,
                 friction_body_world, 
                 friction_foot_world, 

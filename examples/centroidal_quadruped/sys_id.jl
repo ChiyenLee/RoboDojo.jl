@@ -2,7 +2,12 @@ function est_param(sim_model, x_traj, u_traj, w, Q, R; iterations=10, α=0.1)
     w̄ = copy(w)
     for i in 1:iterations
         cost_now, grad_now = cost_param(sim_model, x_traj, u_traj, w̄, Q)
-        w̄ -= α * grad_now[1,:]
+        # w̄[1] -= α * grad_now[1,1]
+
+        reg = I(4) * 1e-4
+        reg[1,1] = 1e-9
+        dw = inv(grad_now' * grad_now + reg) * grad_now' * cost_now
+        w̄ -= dw[:,1] 
     end
     return w̄
 end 
@@ -25,7 +30,7 @@ function cost_param(sim, xs_, us_, w_init, Q)
         # ∂v1∂w1 = sim.grad.∂q3∂w1[1] / hm 
         ∂q3∂w1 = sim.grad.∂q3∂w1[1] 
         ∂dyn∂w1 = [∂q3∂w1 ; ∂v1∂w1]
-        J += (∂cost∂dyn) * ∂dyn∂w1 #+ 2 * w_init' * I(4)
+        J += (∂cost∂dyn) * ∂dyn∂w1 #+ 2 * w' * I(4) * Diagonal([1e-5, 1e-5, 1e-5, 1e-5])
     end 
     return cost, J
 end 
